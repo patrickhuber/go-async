@@ -38,6 +38,8 @@ func (t *task) Wait() {
 
 	t.mutext.Lock()
 	defer t.mutext.Unlock()
+
+	// check once again inside the mutex just to make sure another operation didn't set the done variable
 	if t.done {
 		return
 	}
