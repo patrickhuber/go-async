@@ -49,6 +49,9 @@ func (t *task) Wait() {
 	case t.err = <-t.errChannel:
 	case t.value = <-t.valueChannel:
 	}
+
+	// do a non blocking check of the done channel
+	_ = t.checkDone()
 }
 
 func (t *task) Result() (interface{}, error) {
@@ -82,6 +85,11 @@ func (t *task) IsComplete() bool {
 		return true
 	}
 
+	// do a non blocking check of the done channel
+	return t.checkDone()
+}
+
+func (t *task) checkDone() bool {
 	// do a non blocking check of the done channel
 	select {
 	case t.done = <-t.doneChannel:
@@ -130,6 +138,7 @@ func WhenAny(tasks ...Task) Task {
 		var waitGroup sync.WaitGroup
 		waitGroup.Add(1)
 
+		// perhaps add cancelation here to avoid blocking these unfinished go routines?
 		for _, task := range tasks {
 			go func(task Task, finished chan Task) {
 				defer waitGroup.Done()
