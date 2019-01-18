@@ -22,7 +22,6 @@ type Task interface {
 type task struct {
 	errChannel   chan error
 	valueChannel chan interface{}
-	doneChannel  chan bool
 
 	err   error
 	value interface{}
@@ -32,7 +31,7 @@ type task struct {
 }
 
 func (t *task) Wait() {
-	if t.IsComplete() {
+	if t.done {
 		return
 	}
 
@@ -49,9 +48,7 @@ func (t *task) Wait() {
 	case t.err = <-t.errChannel:
 	case t.value = <-t.valueChannel:
 	}
-
-	// do a non blocking check of the done channel
-	_ = t.checkDone()
+	t.done = true
 }
 
 func (t *task) Result() (interface{}, error) {
@@ -75,28 +72,7 @@ func (t *task) ContinueWith(continuation Continuation) Task {
 }
 
 func (t *task) IsComplete() bool {
-	if t.done {
-		return true
-	}
-
-	t.mutext.Lock()
-	defer t.mutext.Unlock()
-	if t.done {
-		return true
-	}
-
-	// do a non blocking check of the done channel
-	return t.checkDone()
-}
-
-func (t *task) checkDone() bool {
-	// do a non blocking check of the done channel
-	select {
-	case t.done = <-t.doneChannel:
-		return t.done
-	default:
-		return false
-	}
+	return t.done
 }
 
 // WhenAll creates a task that waits on all tasks to finish
@@ -192,7 +168,6 @@ func Run(delegate Delegate) Task {
 	go func() {
 		defer close(t.errChannel)
 		defer close(t.valueChannel)
-		defer close(t.doneChannel)
 
 		value, err := delegate()
 		if err != nil {
@@ -200,8 +175,6 @@ func Run(delegate Delegate) Task {
 		} else {
 			t.valueChannel <- value
 		}
-		// make sure to write to done only after writing to any other channel
-		t.doneChannel <- true
 	}()
 	return t
 }
@@ -210,11 +183,9 @@ func create() *task {
 
 	channel := make(chan interface{})
 	errCh := make(chan error)
-	doneCh := make(chan bool)
 
 	return &task{
 		errChannel:   errCh,
-		doneChannel:  doneCh,
 		valueChannel: channel,
 	}
 }
